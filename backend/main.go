@@ -25,6 +25,7 @@ func main() {
 	})
 
 	routes.RegisterExpenseRoutes(r)
+	routes.RegisterBudgetRoutes(r)
 
 	r.Run(":8080")
 }

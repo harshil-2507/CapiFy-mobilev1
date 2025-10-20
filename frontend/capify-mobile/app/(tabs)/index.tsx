@@ -19,6 +19,24 @@ interface Expense {
     description: string;
 }
 
+// Budget Interface (matching Go backend response exactly)
+interface Budget {
+    ID: number;
+    CreatedAt: string;
+    UpdatedAt: string;
+    DeletedAt: string | null;
+    category: string;
+    amount: number;
+    period: string;
+    start_date: string;
+    end_date: string;
+    is_active: boolean;
+    current_spent: number;
+    remaining: number;
+    percentage: number;
+    status: 'safe' | 'warning' | 'danger';
+}
+
 export default function HomeScreen() {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
@@ -52,12 +70,23 @@ export default function HomeScreen() {
     const [showChartsModal, setShowChartsModal] = useState(false);
     const [chartData, setChartData] = useState<any>(null);
     
+    // Budget state
+    const [budgets, setBudgets] = useState<Budget[]>([]);
+    const [showBudgetModal, setShowBudgetModal] = useState(false);
+    const [showBudgetSetupModal, setShowBudgetSetupModal] = useState(false);
+    const [newBudget, setNewBudget] = useState({
+        category: '',
+        amount: '',
+        period: 'monthly'
+    });
+    
     // Animation refs
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const slideAnim = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
         fetchExpenses();
+        fetchBudgets();
     }, []);
 
     useEffect(() => {
@@ -106,6 +135,67 @@ export default function HomeScreen() {
         } finally {
             setLoading(false);
             setRefreshing(false);
+        }
+    };
+
+    // Fetch budgets from backend
+    const fetchBudgets = async () => {
+        try {
+            console.log("💰 Fetching budgets from API...");
+            const res = await API.get("/budgets");
+            console.log("📊 Received", res.data?.length || 0, "budgets from API");
+            setBudgets(res.data || []);
+        } catch (error) {
+            console.error("❌ Failed to fetch budgets:", error);
+        }
+    };
+
+    // Add new budget
+    const addBudget = async () => {
+        // Validation
+        if (!newBudget.category.trim()) {
+            Alert.alert("Validation Error", "Please enter a category for the budget.");
+            return;
+        }
+        if (!newBudget.amount.trim() || isNaN(Number(newBudget.amount))) {
+            Alert.alert("Validation Error", "Please enter a valid budget amount.");
+            return;
+        }
+
+        try {
+            const budgetData = {
+                category: newBudget.category.trim(),
+                amount: parseFloat(newBudget.amount),
+                period: newBudget.period
+            };
+
+            await API.post("/budgets", budgetData);
+            
+            // Reset form
+            setNewBudget({ category: '', amount: '', period: 'monthly' });
+            setShowBudgetSetupModal(false);
+            
+            // Refresh budgets list
+            fetchBudgets();
+            
+            Alert.alert("Success", "Budget created successfully!");
+        } catch (error) {
+            console.error("❌ Failed to create budget:", error);
+            if (error instanceof Error && 'response' in error && (error as any).response?.status === 409) {
+                Alert.alert("Budget Exists", "A budget already exists for this category and period.");
+            } else {
+                Alert.alert("Error", "Failed to create budget. Please try again.");
+            }
+        }
+    };
+
+    // Get budget status color
+    const getBudgetStatusColor = (status: string) => {
+        switch (status) {
+            case 'danger': return Colors.error;
+            case 'warning': return '#FF9500';
+            case 'safe': return Colors.accent;
+            default: return Colors.textSecondary;
         }
     };
 
@@ -275,6 +365,7 @@ export default function HomeScreen() {
             
             // Refresh expenses list
             fetchExpenses();
+            fetchBudgets(); // Also refresh budgets to update spending
             
             Alert.alert("Success", "Expense added successfully!");
         } catch (error) {
@@ -300,6 +391,7 @@ export default function HomeScreen() {
             setShowDeleteModal(false);
             setDeletingExpense(null);
             fetchExpenses(); // Refresh the list
+            fetchBudgets(); // Also refresh budgets to update spending
             Alert.alert("Success", "Expense deleted successfully!");
         } catch (error) {
             console.error("❌ Failed to delete expense:", error);
@@ -360,6 +452,7 @@ export default function HomeScreen() {
             
             // Refresh expenses list
             fetchExpenses();
+            fetchBudgets(); // Also refresh budgets to update spending
             
             Alert.alert("Success", "Expense updated successfully!");
         } catch (error) {
@@ -426,6 +519,9 @@ export default function HomeScreen() {
                         <Text style={styles.subtitle}>Track your finances with ease</Text>
                     </View>
                     <View style={styles.headerButtons}>
+                        <TouchableOpacity style={styles.headerButton} onPress={() => setShowBudgetModal(true)}>
+                            <Text style={styles.headerButtonText}>💰</Text>
+                        </TouchableOpacity>
                         <TouchableOpacity style={styles.headerButton} onPress={() => setShowChartsModal(true)}>
                             <Text style={styles.headerButtonText}>📊</Text>
                         </TouchableOpacity>
@@ -873,6 +969,164 @@ export default function HomeScreen() {
                     >
                         <Text style={styles.saveButtonText}>Close</Text>
                     </TouchableOpacity>
+                </SafeAreaView>
+            </Modal>
+
+            {/* Budget Management Modal */}
+            <Modal
+                visible={showBudgetModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+            >
+                <SafeAreaView style={styles.modalContainer}>
+                    <Text style={styles.modalTitle}>💰 Budget Management</Text>
+                    
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                        {budgets.length > 0 ? (
+                            <>
+                                {/* Budget Overview */}
+                                <View style={styles.budgetOverview}>
+                                    <Text style={styles.budgetOverviewTitle}>Current Budgets</Text>
+                                    <Text style={styles.budgetOverviewSubtitle}>
+                                        {budgets.length} active budget{budgets.length !== 1 ? 's' : ''}
+                                    </Text>
+                                </View>
+
+                                {/* Budget Cards */}
+                                {budgets.map((budget) => (
+                                    <View key={budget.ID} style={styles.budgetCard}>
+                                        <View style={styles.budgetCardHeader}>
+                                            <Text style={styles.budgetCategory}>{budget.category}</Text>
+                                            <Text style={[styles.budgetStatus, { color: getBudgetStatusColor(budget.status) }]}>
+                                                {budget.status.toUpperCase()}
+                                            </Text>
+                                        </View>
+                                        
+                                        <View style={styles.budgetAmounts}>
+                                            <Text style={styles.budgetSpent}>
+                                                ₹{budget.current_spent.toFixed(2)} / ₹{budget.amount.toFixed(2)}
+                                            </Text>
+                                            <Text style={styles.budgetRemaining}>
+                                                ₹{budget.remaining.toFixed(2)} remaining
+                                            </Text>
+                                        </View>
+                                        
+                                        <View style={styles.budgetProgressContainer}>
+                                            <View style={styles.budgetProgressTrack}>
+                                                <View 
+                                                    style={[
+                                                        styles.budgetProgressFill,
+                                                        { 
+                                                            width: `${Math.min(budget.percentage, 100)}%`,
+                                                            backgroundColor: getBudgetStatusColor(budget.status)
+                                                        }
+                                                    ]} 
+                                                />
+                                            </View>
+                                            <Text style={styles.budgetPercentage}>
+                                                {budget.percentage.toFixed(1)}%
+                                            </Text>
+                                        </View>
+                                    </View>
+                                ))}
+                            </>
+                        ) : (
+                            <View style={styles.noBudgetsContainer}>
+                                <Text style={styles.noBudgetsIcon}>💰</Text>
+                                <Text style={styles.noBudgetsTitle}>No Budgets Set</Text>
+                                <Text style={styles.noBudgetsMessage}>
+                                    Create budgets to track your spending limits and stay on top of your finances.
+                                </Text>
+                            </View>
+                        )}
+                    </ScrollView>
+                    
+                    <View style={styles.budgetModalButtons}>
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.cancelButton]} 
+                            onPress={() => setShowBudgetModal(false)}
+                        >
+                            <Text style={styles.cancelButtonText}>Close</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.saveButton]} 
+                            onPress={() => {
+                                setShowBudgetModal(false);
+                                setShowBudgetSetupModal(true);
+                            }}
+                        >
+                            <Text style={styles.saveButtonText}>+ Add Budget</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            </Modal>
+
+            {/* Budget Setup Modal */}
+            <Modal
+                visible={showBudgetSetupModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+            >
+                <SafeAreaView style={styles.modalContainer}>
+                    <Text style={styles.modalTitle}>Create Budget</Text>
+                    
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Category (e.g., Food, Transportation)"
+                        value={newBudget.category}
+                        onChangeText={(text) => setNewBudget({...newBudget, category: text})}
+                    />
+                    
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Budget Amount (e.g., 5000)"
+                        value={newBudget.amount}
+                        keyboardType="numeric"
+                        onChangeText={(text) => setNewBudget({...newBudget, amount: text})}
+                    />
+                    
+                    <View style={styles.budgetPeriodContainer}>
+                        <Text style={styles.budgetPeriodLabel}>Budget Period</Text>
+                        <View style={styles.budgetPeriodOptions}>
+                            {['monthly', 'weekly'].map((period) => (
+                                <TouchableOpacity
+                                    key={period}
+                                    style={[
+                                        styles.budgetPeriodOption,
+                                        newBudget.period === period && styles.budgetPeriodOptionActive
+                                    ]}
+                                    onPress={() => setNewBudget({...newBudget, period})}
+                                >
+                                    <Text style={[
+                                        styles.budgetPeriodOptionText,
+                                        newBudget.period === period && styles.budgetPeriodOptionTextActive
+                                    ]}>
+                                        {period.charAt(0).toUpperCase() + period.slice(1)}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                    
+                    <View style={styles.modalButtons}>
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.cancelButton]} 
+                            onPress={() => {
+                                setShowBudgetSetupModal(false);
+                                setNewBudget({ category: '', amount: '', period: 'monthly' });
+                            }}
+                        >
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.saveButton]} 
+                            onPress={addBudget}
+                        >
+                            <Text style={styles.saveButtonText}>Create Budget</Text>
+                        </TouchableOpacity>
+                    </View>
                 </SafeAreaView>
             </Modal>
         </SafeAreaView>
@@ -1504,5 +1758,155 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: Colors.textSecondary,
         textAlign: 'center',
+    },
+    
+    // Budget Styles
+    budgetOverview: {
+        backgroundColor: Colors.surface,
+        padding: 20,
+        borderRadius: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        alignItems: 'center',
+    },
+    budgetOverviewTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    budgetOverviewSubtitle: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        fontWeight: '500',
+    },
+    budgetCard: {
+        backgroundColor: Colors.card,
+        borderRadius: 16,
+        padding: 20,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        shadowColor: Colors.shadow,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 8,
+    },
+    budgetCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    budgetCategory: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.primary,
+    },
+    budgetStatus: {
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+        textTransform: 'uppercase',
+    },
+    budgetAmounts: {
+        marginBottom: 12,
+    },
+    budgetSpent: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    budgetRemaining: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+    },
+    budgetProgressContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    budgetProgressTrack: {
+        flex: 1,
+        height: 8,
+        backgroundColor: Colors.surface,
+        borderRadius: 4,
+        overflow: 'hidden',
+    },
+    budgetProgressFill: {
+        height: '100%',
+        borderRadius: 4,
+    },
+    budgetPercentage: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: Colors.primary,
+        minWidth: 45,
+        textAlign: 'right',
+    },
+    noBudgetsContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 60,
+    },
+    noBudgetsIcon: {
+        fontSize: 64,
+        marginBottom: 16,
+    },
+    noBudgetsTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 8,
+    },
+    noBudgetsMessage: {
+        fontSize: 16,
+        color: Colors.textSecondary,
+        textAlign: 'center',
+        lineHeight: 24,
+        paddingHorizontal: 20,
+    },
+    budgetModalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 20,
+        gap: 15,
+    },
+    budgetPeriodContainer: {
+        marginBottom: 20,
+    },
+    budgetPeriodLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: Colors.primary,
+        marginBottom: 12,
+    },
+    budgetPeriodOptions: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    budgetPeriodOption: {
+        flex: 1,
+        backgroundColor: Colors.surface,
+        padding: 12,
+        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    budgetPeriodOptionActive: {
+        backgroundColor: Colors.accent,
+        borderColor: Colors.accent,
+    },
+    budgetPeriodOptionText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: Colors.textSecondary,
+    },
+    budgetPeriodOptionTextActive: {
+        color: '#FFFFFF',
     },
 });
