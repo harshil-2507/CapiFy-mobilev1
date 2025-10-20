@@ -22,9 +22,7 @@ export default function HomeScreen() {
     const [loading, setLoading] = useState(true);
     const [showAddModal, setShowAddModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
-    const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
     const [newExpense, setNewExpense] = useState({
         title: '',
         amount: '',
@@ -86,31 +84,39 @@ export default function HomeScreen() {
         }
     };
 
-    const deleteExpense = async (expense: Expense) => {
-        console.log("🗑️ Delete button pressed for expense:", expense.title, "ID:", expense.ID);
-        setDeletingExpense(expense);
-        setShowDeleteModal(true);
-    };
-
-    const confirmDelete = async () => {
-        if (!deletingExpense) return;
-        
-        try {
-            console.log("🚀 Sending DELETE request for expense ID:", deletingExpense.ID);
-            const response = await API.delete(`/expenses/${deletingExpense.ID}`);
-            console.log("✅ Delete response:", response.data);
-            
-            setShowDeleteModal(false);
-            setDeletingExpense(null);
-            fetchExpenses(); // Refresh the list
-            Alert.alert("Success", "Expense deleted successfully!");
-        } catch (error) {
-            console.error("❌ Failed to delete expense:", error);
-            if (error instanceof Error) {
-                console.error("🔍 Error message:", error.message);
-            }
-            Alert.alert("Error", "Failed to delete expense. Please try again.");
-        }
+    const deleteExpense = async (expenseId: number) => {
+        console.log("🗑️ Delete button pressed for expense ID:", expenseId);
+        Alert.alert(
+            "Delete Expense",
+            "Are you sure you want to delete this expense?",
+            [
+                {
+                    text: "Cancel",
+                    style: "cancel",
+                    onPress: () => console.log("❌ Delete cancelled")
+                },
+                {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            console.log("🚀 Sending DELETE request for expense ID:", expenseId);
+                            const response = await API.delete(`/expenses/${expenseId}`);
+                            console.log("✅ Delete response:", response.data);
+                            
+                            fetchExpenses(); // Refresh the list
+                            Alert.alert("Success", "Expense deleted successfully!");
+                        } catch (error) {
+                            console.error("❌ Failed to delete expense:", error);
+                            if (error instanceof Error) {
+                                console.error("🔍 Error message:", error.message);
+                            }
+                            Alert.alert("Error", "Failed to delete expense. Please try again.");
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const startEditExpense = (expense: Expense) => {
@@ -183,7 +189,7 @@ export default function HomeScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity 
                         style={styles.deleteButton}
-                        onPress={() => deleteExpense(item)}
+                        onPress={() => deleteExpense(item.ID)}
                     >
                         <Text style={styles.deleteButtonText}>🗑️</Text>
                     </TouchableOpacity>
@@ -345,45 +351,6 @@ export default function HomeScreen() {
                         </TouchableOpacity>
                     </View>
                 </SafeAreaView>
-            </Modal>
-
-            {/* Delete Confirmation Modal */}
-            <Modal
-                visible={showDeleteModal}
-                animationType="fade"
-                transparent={true}
-            >
-                <View style={styles.deleteModalOverlay}>
-                    <View style={styles.deleteModalContainer}>
-                        <Text style={styles.deleteModalTitle}>Delete Expense</Text>
-                        <Text style={styles.deleteModalMessage}>
-                            Are you sure you want to delete "{deletingExpense?.title}"?
-                        </Text>
-                        <Text style={styles.deleteModalSubtext}>
-                            This action cannot be undone.
-                        </Text>
-                        
-                        <View style={styles.deleteModalButtons}>
-                            <TouchableOpacity 
-                                style={[styles.modalButton, styles.cancelButton]} 
-                                onPress={() => {
-                                    console.log("❌ Delete cancelled");
-                                    setShowDeleteModal(false);
-                                    setDeletingExpense(null);
-                                }}
-                            >
-                                <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            
-                            <TouchableOpacity 
-                                style={[styles.modalButton, styles.deleteConfirmButton]} 
-                                onPress={confirmDelete}
-                            >
-                                <Text style={styles.deleteConfirmButtonText}>Delete</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
             </Modal>
         </SafeAreaView>
     );
@@ -550,53 +517,6 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     deleteButtonText: {
-        fontSize: 16,
-    },
-    // Delete Modal Styles
-    deleteModalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    deleteModalContainer: {
-        backgroundColor: Colors.card,
-        borderRadius: 16,
-        padding: 24,
-        margin: 20,
-        width: '80%',
-        maxWidth: 400,
-    },
-    deleteModalTitle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: Colors.primary,
-        textAlign: 'center',
-        marginBottom: 12,
-    },
-    deleteModalMessage: {
-        fontSize: 16,
-        color: Colors.primary,
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    deleteModalSubtext: {
-        fontSize: 14,
-        color: Colors.secondaryText,
-        textAlign: 'center',
-        marginBottom: 24,
-    },
-    deleteModalButtons: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        gap: 15,
-    },
-    deleteConfirmButton: {
-        backgroundColor: '#f44336',
-    },
-    deleteConfirmButtonText: {
-        color: 'white',
-        fontWeight: 'bold',
         fontSize: 16,
     },
 });

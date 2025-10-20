@@ -1,12 +1,14 @@
 package routes
 
 import (
-    "finance-app-backend/controllers"
-    "github.com/gin-gonic/gin"
+	"finance-app-backend/controllers"
+
+	"github.com/gin-gonic/gin"
 )
 
 func RegisterExpenseRoutes(r *gin.Engine) {
-    r.POST("/expenses", controllers.CreateExpense)
-    r.GET("/expenses", controllers.GetExpenses)
+	r.POST("/expenses", controllers.CreateExpense)
+	r.GET("/expenses", controllers.GetExpenses)
+	r.PUT("/expenses/:id", controllers.UpdateExpense)
+	r.DELETE("/expenses/:id", controllers.DeleteExpense)
 }
-
