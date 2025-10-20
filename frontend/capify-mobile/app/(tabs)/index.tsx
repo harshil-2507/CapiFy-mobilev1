@@ -1,13 +1,16 @@
 // capify-mobile/app/(tabs)/index.tsx
 
 import React, { useEffect, useState } from "react";
-import { View, Text, FlatList, StyleSheet, SafeAreaView, ActivityIndicator } from "react-native";
+import { View, Text, FlatList, StyleSheet, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert } from "react-native";
 import API from "../../api/axios"; // Adjust path if needed
 import { Colors } from "../../theme/Colors";
 
-// Sample Expense Interface (to match Go backend fields)
+// Expense Interface (matching Go backend response exactly)
 interface Expense {
     ID: number;
+    CreatedAt: string;
+    UpdatedAt: string;
+    DeletedAt: string | null;
     title: string;
     amount: number;
     category: string;
@@ -17,6 +20,13 @@ interface Expense {
 export default function HomeScreen() {
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
+    const [showAddModal, setShowAddModal] = useState(false);
+    const [newExpense, setNewExpense] = useState({
+        title: '',
+        amount: '',
+        category: '',
+        description: ''
+    });
 
     useEffect(() => {
         fetchExpenses();
@@ -25,16 +35,48 @@ export default function HomeScreen() {
     const fetchExpenses = async () => {
         try {
             setLoading(true);
-            // 💡 Calls your Go Backend: GET http://localhost:8080/expenses
             const res = await API.get("/expenses"); 
-            
-            // Note: Data from Go backend is an array of expense objects
-            setExpenses(res.data);
+            setExpenses(res.data || []);
         } catch (error) {
-            console.error("Failed to fetch expenses:", error);
-            // Optional: Show an alert to the user
+            console.error("❌ Failed to fetch expenses:", error);
+            Alert.alert("Error", "Failed to fetch expenses. Please try again.");
         } finally {
             setLoading(false);
+        }
+    };
+
+    const addExpense = async () => {
+        // Validation
+        if (!newExpense.title.trim()) {
+            Alert.alert("Validation Error", "Please enter a title for the expense.");
+            return;
+        }
+        if (!newExpense.amount.trim() || isNaN(Number(newExpense.amount))) {
+            Alert.alert("Validation Error", "Please enter a valid amount.");
+            return;
+        }
+
+        try {
+            const expenseData = {
+                title: newExpense.title.trim(),
+                amount: parseFloat(newExpense.amount),
+                category: newExpense.category.trim(),
+                description: newExpense.description.trim()
+            };
+
+            await API.post("/expenses", expenseData);
+            
+            // Reset form
+            setNewExpense({ title: '', amount: '', category: '', description: '' });
+            setShowAddModal(false);
+            
+            // Refresh expenses list
+            fetchExpenses();
+            
+            Alert.alert("Success", "Expense added successfully!");
+        } catch (error) {
+            console.error("❌ Failed to add expense:", error);
+            Alert.alert("Error", "Failed to add expense. Please try again.");
         }
     };
 
@@ -65,11 +107,19 @@ export default function HomeScreen() {
     return (
         <SafeAreaView style={styles.container}>
             <Text style={styles.title}>Expense Tracker</Text>
+            
+            {/* Add Expense Button */}
+            <TouchableOpacity 
+                style={styles.addButton} 
+                onPress={() => setShowAddModal(true)}
+            >
+                <Text style={styles.addButtonText}>+ Add Expense</Text>
+            </TouchableOpacity>
 
             {expenses.length === 0 ? (
                 <View style={styles.center}>
                     <Text style={styles.secondaryText}>No expenses logged yet.</Text>
-                    <Text style={styles.secondaryText}>Try adding one via curl or Postman!</Text>
+                    <Text style={styles.secondaryText}>Add your first expense above!</Text>
                 </View>
             ) : (
                 <FlatList
@@ -79,6 +129,64 @@ export default function HomeScreen() {
                     contentContainerStyle={{ paddingBottom: 20 }}
                 />
             )}
+
+            {/* Add Expense Modal */}
+            <Modal
+                visible={showAddModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+            >
+                <SafeAreaView style={styles.modalContainer}>
+                    <Text style={styles.modalTitle}>Add New Expense</Text>
+                    
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Expense Title (e.g., Coffee)"
+                        value={newExpense.title}
+                        onChangeText={(text) => setNewExpense({...newExpense, title: text})}
+                    />
+                    
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Amount (e.g., 350)"
+                        value={newExpense.amount}
+                        keyboardType="numeric"
+                        onChangeText={(text) => setNewExpense({...newExpense, amount: text})}
+                    />
+                    
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Category (e.g., Food, Transportation)"
+                        value={newExpense.category}
+                        onChangeText={(text) => setNewExpense({...newExpense, category: text})}
+                    />
+                    
+                    <TextInput
+                        style={[styles.input, styles.textArea]}
+                        placeholder="Description (optional)"
+                        value={newExpense.description}
+                        multiline
+                        numberOfLines={3}
+                        onChangeText={(text) => setNewExpense({...newExpense, description: text})}
+                    />
+                    
+                    <View style={styles.modalButtons}>
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.cancelButton]} 
+                            onPress={() => setShowAddModal(false)}
+                        >
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+                        
+                        <TouchableOpacity 
+                            style={[styles.modalButton, styles.saveButton]} 
+                            onPress={addExpense}
+                        >
+                            <Text style={styles.saveButtonText}>Add Expense</Text>
+                        </TouchableOpacity>
+                    </View>
+                </SafeAreaView>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -138,5 +246,81 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: Colors.secondaryText, 
         marginTop: 4 
+    },
+    // Add Expense Button
+    addButton: {
+        backgroundColor: Colors.accent,
+        padding: 15,
+        margin: 20,
+        borderRadius: 12,
+        alignItems: 'center',
+        shadowColor: Colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    addButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    // Modal Styles
+    modalContainer: {
+        flex: 1,
+        backgroundColor: Colors.background,
+        padding: 20,
+    },
+    modalTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: Colors.primary,
+        textAlign: 'center',
+        marginBottom: 30,
+        marginTop: 20,
+    },
+    input: {
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 12,
+        padding: 15,
+        marginBottom: 15,
+        fontSize: 16,
+        color: Colors.primary,
+    },
+    textArea: {
+        height: 80,
+        textAlignVertical: 'top',
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 30,
+        gap: 15,
+    },
+    modalButton: {
+        flex: 1,
+        padding: 15,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    cancelButton: {
+        backgroundColor: '#F5F5F5',
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+    },
+    cancelButtonText: {
+        color: Colors.primary,
+        fontWeight: '600',
+        fontSize: 16,
+    },
+    saveButton: {
+        backgroundColor: Colors.accent,
+    },
+    saveButtonText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
     },
 });
