@@ -74,6 +74,8 @@ export default function HomeScreen() {
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [showBudgetModal, setShowBudgetModal] = useState(false);
     const [showBudgetSetupModal, setShowBudgetSetupModal] = useState(false);
+    const [showBudgetInsightsModal, setShowBudgetInsightsModal] = useState(false);
+    const [budgetAlerts, setBudgetAlerts] = useState<any[]>([]);
     const [newBudget, setNewBudget] = useState({
         category: '',
         amount: '',
@@ -144,7 +146,11 @@ export default function HomeScreen() {
             console.log("💰 Fetching budgets from API...");
             const res = await API.get("/budgets");
             console.log("📊 Received", res.data?.length || 0, "budgets from API");
-            setBudgets(res.data || []);
+            const budgetsData = res.data || [];
+            setBudgets(budgetsData);
+            
+            // Generate alerts and insights
+            generateBudgetAlerts(budgetsData);
         } catch (error) {
             console.error("❌ Failed to fetch budgets:", error);
         }
@@ -197,6 +203,111 @@ export default function HomeScreen() {
             case 'safe': return Colors.accent;
             default: return Colors.textSecondary;
         }
+    };
+
+    // Generate budget alerts and insights
+    const generateBudgetAlerts = (budgets: Budget[]) => {
+        const alerts: any[] = [];
+        let totalBudget = 0;
+        let totalSpent = 0;
+        let overBudgetCount = 0;
+        
+        budgets.forEach(budget => {
+            totalBudget += budget.amount;
+            totalSpent += budget.current_spent;
+            
+            // Critical alerts for over-budget categories
+            if (budget.status === 'danger') {
+                overBudgetCount++;
+                alerts.push({
+                    type: 'danger',
+                    title: `${budget.category} Over Budget!`,
+                    message: `You've spent ₹${budget.current_spent.toFixed(2)} out of ₹${budget.amount.toFixed(2)} (${budget.percentage.toFixed(1)}%)`,
+                    icon: '🚨',
+                    category: budget.category,
+                    priority: 1
+                });
+            }
+            
+            // Warning alerts for approaching limits
+            else if (budget.status === 'warning') {
+                alerts.push({
+                    type: 'warning',
+                    title: `${budget.category} Budget Warning`,
+                    message: `You've used ${budget.percentage.toFixed(1)}% of your budget. ₹${budget.remaining.toFixed(2)} remaining.`,
+                    icon: '⚠️',
+                    category: budget.category,
+                    priority: 2
+                });
+            }
+            
+            // Success alerts for well-managed budgets
+            else if (budget.percentage > 0 && budget.percentage < 50) {
+                alerts.push({
+                    type: 'success',
+                    title: `${budget.category} On Track`,
+                    message: `Great job! Only ${budget.percentage.toFixed(1)}% used. Keep it up!`,
+                    icon: '✅',
+                    category: budget.category,
+                    priority: 3
+                });
+            }
+        });
+        
+        // Overall budget health alert
+        if (totalBudget > 0) {
+            const overallPercentage = (totalSpent / totalBudget) * 100;
+            if (overallPercentage > 90) {
+                alerts.unshift({
+                    type: 'danger',
+                    title: 'Overall Budget Critical',
+                    message: `You've used ${overallPercentage.toFixed(1)}% of your total budget this month!`,
+                    icon: '🔴',
+                    priority: 0
+                });
+            } else if (overallPercentage > 75) {
+                alerts.unshift({
+                    type: 'warning',
+                    title: 'Overall Budget Warning',
+                    message: `${overallPercentage.toFixed(1)}% of total budget used. Consider reviewing expenses.`,
+                    icon: '🟡',
+                    priority: 1
+                });
+            }
+        }
+        
+        // Sort alerts by priority (lower number = higher priority)
+        alerts.sort((a, b) => a.priority - b.priority);
+        
+        setBudgetAlerts(alerts.slice(0, 5)); // Show top 5 alerts
+    };
+
+    // Generate budget comparison data
+    const generateBudgetComparison = () => {
+        if (budgets.length === 0) return null;
+        
+        const comparison = budgets.map(budget => ({
+            category: budget.category,
+            budgeted: budget.amount,
+            spent: budget.current_spent,
+            remaining: budget.remaining,
+            percentage: budget.percentage,
+            status: budget.status,
+            variance: budget.current_spent - budget.amount,
+            efficiency: budget.amount > 0 ? ((budget.amount - budget.current_spent) / budget.amount) * 100 : 0
+        }));
+        
+        // Calculate totals
+        const totals = {
+            totalBudgeted: budgets.reduce((sum, b) => sum + b.amount, 0),
+            totalSpent: budgets.reduce((sum, b) => sum + b.current_spent, 0),
+            totalRemaining: budgets.reduce((sum, b) => sum + b.remaining, 0),
+            avgEfficiency: comparison.reduce((sum, c) => sum + c.efficiency, 0) / comparison.length,
+            categoriesOverBudget: budgets.filter(b => b.status === 'danger').length,
+            categoriesOnTrack: budgets.filter(b => b.status === 'safe').length
+        };
+        
+        return { comparison, totals };
     };
 
     // Filter expenses by category and date
@@ -519,8 +630,21 @@ export default function HomeScreen() {
                         <Text style={styles.subtitle}>Track your finances with ease</Text>
                     </View>
                     <View style={styles.headerButtons}>
-                        <TouchableOpacity style={styles.headerButton} onPress={() => setShowBudgetModal(true)}>
+                        <TouchableOpacity 
+                            style={[styles.headerButton, budgetAlerts.length > 0 && styles.headerButtonAlert]} 
+                            onPress={() => setShowBudgetModal(true)}
+                        >
                             <Text style={styles.headerButtonText}>💰</Text>
+                            {budgetAlerts.filter(a => a.type === 'danger').length > 0 && (
+                                <View style={styles.alertBadge}>
+                                    <Text style={styles.alertBadgeText}>
+                                        {budgetAlerts.filter(a => a.type === 'danger').length}
+                                    </Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.headerButton} onPress={() => setShowBudgetInsightsModal(true)}>
+                            <Text style={styles.headerButtonText}>📈</Text>
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.headerButton} onPress={() => setShowChartsModal(true)}>
                             <Text style={styles.headerButtonText}>📊</Text>
@@ -984,6 +1108,28 @@ export default function HomeScreen() {
                     <ScrollView showsVerticalScrollIndicator={false}>
                         {budgets.length > 0 ? (
                             <>
+                                {/* Budget Alerts Section */}
+                                {budgetAlerts.length > 0 && (
+                                    <View style={styles.budgetAlertsSection}>
+                                        <Text style={styles.budgetAlertsSectionTitle}>🔔 Budget Alerts</Text>
+                                        {budgetAlerts.slice(0, 3).map((alert, index) => {
+                                            const alertTypeStyle = alert.type === 'danger' ? styles.budgetAlertDanger :
+                                                                   alert.type === 'warning' ? styles.budgetAlertWarning :
+                                                                   styles.budgetAlertSuccess;
+                                            
+                                            return (
+                                                <View key={index} style={[styles.budgetAlert, alertTypeStyle]}>
+                                                    <Text style={styles.budgetAlertIcon}>{alert.icon}</Text>
+                                                    <View style={styles.budgetAlertContent}>
+                                                        <Text style={styles.budgetAlertTitle}>{alert.title}</Text>
+                                                        <Text style={styles.budgetAlertMessage}>{alert.message}</Text>
+                                                    </View>
+                                                </View>
+                                            );
+                                        })}
+                                    </View>
+                                )}
+
                                 {/* Budget Overview */}
                                 <View style={styles.budgetOverview}>
                                     <Text style={styles.budgetOverviewTitle}>Current Budgets</Text>
@@ -1127,6 +1273,169 @@ export default function HomeScreen() {
                             <Text style={styles.saveButtonText}>Create Budget</Text>
                         </TouchableOpacity>
                     </View>
+                </SafeAreaView>
+            </Modal>
+
+            {/* Budget Insights & Analytics Modal */}
+            <Modal
+                visible={showBudgetInsightsModal}
+                animationType="slide"
+                presentationStyle="pageSheet"
+            >
+                <SafeAreaView style={styles.modalContainer}>
+                    <Text style={styles.modalTitle}>📈 Budget Insights</Text>
+                    
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                        {(() => {
+                            const comparisonData = generateBudgetComparison();
+                            if (!comparisonData) {
+                                return (
+                                    <View style={styles.noDataContainer}>
+                                        <Text style={styles.noDataText}>📈</Text>
+                                        <Text style={styles.noDataTitle}>No Budget Data</Text>
+                                        <Text style={styles.noDataMessage}>Create some budgets to see insights</Text>
+                                    </View>
+                                );
+                            }
+
+                            const { comparison, totals } = comparisonData;
+                            
+                            return (
+                                <>
+                                    {/* Overall Budget Health */}
+                                    <View style={styles.insightsSection}>
+                                        <Text style={styles.insightsSectionTitle}>💡 Overall Budget Health</Text>
+                                        <View style={styles.healthCards}>
+                                            <View style={styles.healthCard}>
+                                                <Text style={styles.healthCardValue}>₹{totals.totalSpent.toFixed(0)}</Text>
+                                                <Text style={styles.healthCardLabel}>Total Spent</Text>
+                                                <Text style={styles.healthCardSubtext}>
+                                                    of ₹{totals.totalBudgeted.toFixed(0)} budgeted
+                                                </Text>
+                                            </View>
+                                            <View style={styles.healthCard}>
+                                                <Text style={[styles.healthCardValue, { color: Colors.accent }]}>
+                                                    {totals.avgEfficiency.toFixed(1)}%
+                                                </Text>
+                                                <Text style={styles.healthCardLabel}>Avg Efficiency</Text>
+                                                <Text style={styles.healthCardSubtext}>
+                                                    {totals.avgEfficiency > 0 ? 'Under budget' : 'Over budget'}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                        
+                                        <View style={styles.statusCards}>
+                                            <View style={[styles.statusCard, { backgroundColor: Colors.accent + '20' }]}>
+                                                <Text style={styles.statusCardNumber}>{totals.categoriesOnTrack}</Text>
+                                                <Text style={styles.statusCardLabel}>On Track</Text>
+                                            </View>
+                                            <View style={[styles.statusCard, { backgroundColor: Colors.error + '20' }]}>
+                                                <Text style={styles.statusCardNumber}>{totals.categoriesOverBudget}</Text>
+                                                <Text style={styles.statusCardLabel}>Over Budget</Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Budget vs Actual Comparison */}
+                                    <View style={styles.insightsSection}>
+                                        <Text style={styles.insightsSectionTitle}>📊 Budget vs Actual</Text>
+                                        {comparison.map((item, index) => (
+                                            <View key={index} style={styles.comparisonCard}>
+                                                <View style={styles.comparisonHeader}>
+                                                    <Text style={styles.comparisonCategory}>{item.category}</Text>
+                                                    <Text style={[
+                                                        styles.comparisonVariance,
+                                                        { color: item.variance > 0 ? Colors.error : Colors.accent }
+                                                    ]}>
+                                                        {item.variance > 0 ? '+' : ''}₹{item.variance.toFixed(0)}
+                                                    </Text>
+                                                </View>
+                                                
+                                                <View style={styles.comparisonBars}>
+                                                    {/* Budget Bar */}
+                                                    <View style={styles.comparisonBarContainer}>
+                                                        <Text style={styles.comparisonBarLabel}>Budget</Text>
+                                                        <View style={styles.comparisonBarTrack}>
+                                                            <View style={[
+                                                                styles.comparisonBar,
+                                                                { 
+                                                                    width: '100%',
+                                                                    backgroundColor: Colors.surface
+                                                                }
+                                                            ]} />
+                                                        </View>
+                                                        <Text style={styles.comparisonBarValue}>₹{item.budgeted.toFixed(0)}</Text>
+                                                    </View>
+                                                    
+                                                    {/* Spent Bar */}
+                                                    <View style={styles.comparisonBarContainer}>
+                                                        <Text style={styles.comparisonBarLabel}>Spent</Text>
+                                                        <View style={styles.comparisonBarTrack}>
+                                                            <View style={[
+                                                                styles.comparisonBar,
+                                                                { 
+                                                                    width: `${Math.min((item.spent / Math.max(item.budgeted, item.spent)) * 100, 100)}%`,
+                                                                    backgroundColor: getBudgetStatusColor(item.status)
+                                                                }
+                                                            ]} />
+                                                        </View>
+                                                        <Text style={styles.comparisonBarValue}>₹{item.spent.toFixed(0)}</Text>
+                                                    </View>
+                                                </View>
+                                            </View>
+                                        ))}
+                                    </View>
+
+                                    {/* Smart Recommendations */}
+                                    <View style={styles.insightsSection}>
+                                        <Text style={styles.insightsSectionTitle}>💡 Smart Recommendations</Text>
+                                        <View style={styles.recommendationsContainer}>
+                                            {comparison.filter(c => c.status === 'danger').length > 0 && (
+                                                <View style={styles.recommendation}>
+                                                    <Text style={styles.recommendationIcon}>🎯</Text>
+                                                    <View style={styles.recommendationContent}>
+                                                        <Text style={styles.recommendationTitle}>Focus on Over-Budget Categories</Text>
+                                                        <Text style={styles.recommendationText}>
+                                                            Consider reducing spending in {comparison.filter(c => c.status === 'danger').map(c => c.category).join(', ')} categories.
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            )}
+                                            
+                                            {totals.avgEfficiency > 20 && (
+                                                <View style={styles.recommendation}>
+                                                    <Text style={styles.recommendationIcon}>💰</Text>
+                                                    <View style={styles.recommendationContent}>
+                                                        <Text style={styles.recommendationTitle}>Great Budget Management!</Text>
+                                                        <Text style={styles.recommendationText}>
+                                                            You're staying well under budget. Consider allocating extra funds to savings or investments.
+                                                        </Text>
+                                                    </View>
+                                                </View>
+                                            )}
+                                            
+                                            <View style={styles.recommendation}>
+                                                <Text style={styles.recommendationIcon}>📅</Text>
+                                                <View style={styles.recommendationContent}>
+                                                    <Text style={styles.recommendationTitle}>Review & Adjust Monthly</Text>
+                                                    <Text style={styles.recommendationText}>
+                                                        Regular budget reviews help optimize your spending patterns and financial goals.
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        </View>
+                                    </View>
+                                </>
+                            );
+                        })()}
+                    </ScrollView>
+                    
+                    <TouchableOpacity 
+                        style={[styles.modalButton, styles.saveButton, { margin: 20 }]} 
+                        onPress={() => setShowBudgetInsightsModal(false)}
+                    >
+                        <Text style={styles.saveButtonText}>Close Insights</Text>
+                    </TouchableOpacity>
                 </SafeAreaView>
             </Modal>
         </SafeAreaView>
@@ -1908,5 +2217,233 @@ const styles = StyleSheet.create({
     },
     budgetPeriodOptionTextActive: {
         color: '#FFFFFF',
+    },
+    
+    // Phase 2: Enhanced Budget Styles
+    headerButtonAlert: {
+        borderColor: Colors.error,
+        borderWidth: 2,
+    },
+    alertBadge: {
+        position: 'absolute',
+        top: -5,
+        right: -5,
+        backgroundColor: Colors.error,
+        borderRadius: 10,
+        minWidth: 20,
+        height: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    alertBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: '800',
+    },
+    budgetAlertsSection: {
+        marginBottom: 20,
+    },
+    budgetAlertsSectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 12,
+    },
+    budgetAlert: {
+        flexDirection: 'row',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+    },
+    budgetAlertDanger: {
+        backgroundColor: Colors.error + '15',
+        borderColor: Colors.error + '30',
+    },
+    budgetAlertWarning: {
+        backgroundColor: '#FF9500' + '15',
+        borderColor: '#FF9500' + '30',
+    },
+    budgetAlertSuccess: {
+        backgroundColor: Colors.accent + '15',
+        borderColor: Colors.accent + '30',
+    },
+    budgetAlertIcon: {
+        fontSize: 24,
+        marginRight: 12,
+    },
+    budgetAlertContent: {
+        flex: 1,
+    },
+    budgetAlertTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    budgetAlertMessage: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        lineHeight: 20,
+    },
+    
+    // Insights Modal Styles
+    insightsSection: {
+        marginBottom: 24,
+    },
+    insightsSectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 16,
+    },
+    healthCards: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 16,
+    },
+    healthCard: {
+        flex: 1,
+        backgroundColor: Colors.surface,
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    healthCardValue: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    healthCardLabel: {
+        fontSize: 12,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 4,
+    },
+    healthCardSubtext: {
+        fontSize: 11,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+    },
+    statusCards: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    statusCard: {
+        flex: 1,
+        padding: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    statusCardNumber: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    statusCardLabel: {
+        fontSize: 12,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    
+    // Comparison Styles
+    comparisonCard: {
+        backgroundColor: Colors.surface,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    comparisonHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    comparisonCategory: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: Colors.primary,
+    },
+    comparisonVariance: {
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    comparisonBars: {
+        gap: 8,
+    },
+    comparisonBarContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    comparisonBarLabel: {
+        fontSize: 12,
+        color: Colors.textSecondary,
+        fontWeight: '600',
+        width: 50,
+    },
+    comparisonBarTrack: {
+        flex: 1,
+        height: 6,
+        backgroundColor: Colors.background,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    comparisonBar: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    comparisonBarValue: {
+        fontSize: 12,
+        color: Colors.primary,
+        fontWeight: '600',
+        width: 60,
+        textAlign: 'right',
+    },
+    
+    // Recommendations Styles
+    recommendationsContainer: {
+        gap: 12,
+    },
+    recommendation: {
+        flexDirection: 'row',
+        backgroundColor: Colors.surface,
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        alignItems: 'flex-start',
+    },
+    recommendationIcon: {
+        fontSize: 24,
+        marginRight: 12,
+        marginTop: 2,
+    },
+    recommendationContent: {
+        flex: 1,
+    },
+    recommendationTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: Colors.primary,
+        marginBottom: 4,
+    },
+    recommendationText: {
+        fontSize: 14,
+        color: Colors.textSecondary,
+        lineHeight: 20,
     },
 });
