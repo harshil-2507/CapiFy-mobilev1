@@ -31,17 +31,26 @@ const Colors = {
   error: '#ef4444',
 };
 
-const API_BASE_URL = 'http://10.167.75.155:8080';
+const API_BASE_URL = 'https://renewed-achievement-production-eb97.up.railway.app';
 
 // Test API connectivity on component mount
 const testAPIConnection = async () => {
   try {
     console.log('🔍 Testing API connection to:', API_BASE_URL);
     const response = await fetch(`${API_BASE_URL}/`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     const data = await response.json();
     console.log('✅ API connection test successful:', data);
   } catch (error) {
     console.error('❌ API connection test failed:', error);
+    console.log('🔧 Possible solutions:');
+    console.log('1. Check if Railway backend is running');
+    console.log('2. Verify the API URL is correct');
+    console.log('3. Check network connectivity');
   }
 };
 

@@ -24,8 +24,8 @@ WORKDIR /root/
 # Copy the binary from builder stage
 COPY --from=builder /app/main .
 
-# Expose port (Railway will set PORT env var)
-EXPOSE $PORT
+# Expose port (Railway will provide PORT environment variable)
+EXPOSE 8000
 
 # Run the application
 CMD ["./main"]

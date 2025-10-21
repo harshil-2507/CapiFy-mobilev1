@@ -1,23 +1,14 @@
-// // capify-mobile/app/(tabs)/index.tsx
+// Clean backup version - not used in current app
+import React from "react";
+import { View, Text } from "react-native";
 
-// import React, { useEffect, useState } from "react";
-// import { View, Text, FlatList, StyleSheet, SafeAreaView, ActivityIndicator, TouchableOpacity, TextInput, Modal, Alert } from "react-native";
-// import API from "../../api/axios"; // Adjust path if needed
-// import { Colors } from "../../theme/Colors";
-
-// // Expense Interface (matching Go backend response exactly)
-// interface Expense {
-//     ID: number;
-//     CreatedAt: string;
-//     UpdatedAt: string;
-//     DeletedAt: string | null;
-//     title: string;
-//     amount: number;
-//     category: string;
-//     description: string;
-// }
-
-// export default function HomeScreen() {
+export default function IndexClean() {
+    return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text>This is a backup file</Text>
+        </View>
+    );
+}
 //     const [expenses, setExpenses] = useState<Expense[]>([]);
 //     const [loading, setLoading] = useState(true);
 //     const [showAddModal, setShowAddModal] = useState(false);
