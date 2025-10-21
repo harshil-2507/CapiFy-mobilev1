@@ -53,7 +53,7 @@ func main() {
 		debug.GET("/user/:mobile", debugController.GetUserByMobile)
 	}
 
-	fmt.Println("🚀 CapiFy Backend Server starting on :8080")
+	fmt.Println("🚀 CapiFy Backend Server starting on :8000")
 	fmt.Println("📱 Authentication endpoints:")
 	fmt.Println("   POST /auth/send-otp")
 	fmt.Println("   POST /auth/verify-otp")
@@ -63,5 +63,5 @@ func main() {
 	fmt.Println("   GET  /debug/users")
 	fmt.Println("   GET  /debug/otps")
 	fmt.Println("   GET  /debug/user/:mobile")
-	r.Run(":8080")
+	r.Run(":8000")
 }
