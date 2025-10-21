@@ -10,13 +10,32 @@ import (
 	"gorm.io/gorm"
 )
 
+// Get user ID from JWT token
+func getBudgetUserIDFromToken(c *gin.Context) (uint, error) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		return 0, gin.Error{Err: gin.Error{Type: gin.ErrorTypePublic}.Err}
+	}
+	return userID.(uint), nil
+}
+
 // CreateBudget creates a new budget for a category
 func CreateBudget(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	var budget models.Budget
 	if err := c.ShouldBindJSON(&budget); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Assign the user ID to the budget
+	budget.UserID = userID
 
 	// Set default dates for monthly budget if not provided
 	if budget.Period == "monthly" && budget.StartDate.IsZero() {
@@ -25,10 +44,10 @@ func CreateBudget(c *gin.Context) {
 		budget.EndDate = budget.StartDate.AddDate(0, 1, -1) // Last day of month
 	}
 
-	// Check if budget already exists for this category and period
+	// Check if budget already exists for this category and period for this user
 	var existingBudget models.Budget
-	result := config.DB.Where("category = ? AND is_active = ? AND start_date <= ? AND end_date >= ?",
-		budget.Category, true, time.Now(), time.Now()).First(&existingBudget)
+	result := config.DB.Where("category = ? AND is_active = ? AND user_id = ? AND start_date <= ? AND end_date >= ?",
+		budget.Category, true, userID, time.Now(), time.Now()).First(&existingBudget)
 
 	if result.Error == nil {
 		c.JSON(http.StatusConflict, gin.H{"error": "Budget already exists for this category and period"})
@@ -42,8 +61,15 @@ func CreateBudget(c *gin.Context) {
 
 // GetBudgets retrieves all active budgets with spending information
 func GetBudgets(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	var budgets []models.Budget
-	config.DB.Where("is_active = ?", true).Find(&budgets)
+	config.DB.Where("is_active = ? AND user_id = ?", true, userID).Find(&budgets)
 
 	var budgetsWithSpending []models.BudgetWithSpending
 
@@ -52,11 +78,11 @@ func GetBudgets(c *gin.Context) {
 			Budget: budget,
 		}
 
-		// Calculate current spending for this budget period and category
+		// Calculate current spending for this budget period and category for this user
 		var totalSpent float64
 		config.DB.Model(&models.Expense{}).
-			Where("category = ? AND created_at >= ? AND created_at <= ?",
-				budget.Category, budget.StartDate, budget.EndDate).
+			Where("category = ? AND user_id = ? AND created_at >= ? AND created_at <= ?",
+				budget.Category, userID, budget.StartDate, budget.EndDate).
 			Select("COALESCE(SUM(amount), 0)").
 			Row().Scan(&totalSpent)
 
@@ -84,10 +110,17 @@ func GetBudgets(c *gin.Context) {
 
 // GetBudgetByID retrieves a specific budget with spending information
 func GetBudgetByID(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	id := c.Param("id")
 	var budget models.Budget
 
-	if err := config.DB.First(&budget, id).Error; err != nil {
+	if err := config.DB.Where("id = ? AND user_id = ?", id, userID).First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Budget not found"})
 			return
@@ -100,11 +133,11 @@ func GetBudgetByID(c *gin.Context) {
 		Budget: budget,
 	}
 
-	// Calculate current spending
+	// Calculate current spending for this user
 	var totalSpent float64
 	config.DB.Model(&models.Expense{}).
-		Where("category = ? AND created_at >= ? AND created_at <= ?",
-			budget.Category, budget.StartDate, budget.EndDate).
+		Where("category = ? AND user_id = ? AND created_at >= ? AND created_at <= ?",
+			budget.Category, userID, budget.StartDate, budget.EndDate).
 		Select("COALESCE(SUM(amount), 0)").
 		Row().Scan(&totalSpent)
 
@@ -129,10 +162,17 @@ func GetBudgetByID(c *gin.Context) {
 
 // UpdateBudget updates an existing budget
 func UpdateBudget(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	id := c.Param("id")
 	var budget models.Budget
 
-	if err := config.DB.First(&budget, id).Error; err != nil {
+	if err := config.DB.Where("id = ? AND user_id = ?", id, userID).First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Budget not found"})
 			return
@@ -165,10 +205,17 @@ func UpdateBudget(c *gin.Context) {
 
 // DeleteBudget soft deletes a budget (sets is_active to false)
 func DeleteBudget(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	id := c.Param("id")
 	var budget models.Budget
 
-	if err := config.DB.First(&budget, id).Error; err != nil {
+	if err := config.DB.Where("id = ? AND user_id = ?", id, userID).First(&budget).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Budget not found"})
 			return
@@ -184,8 +231,15 @@ func DeleteBudget(c *gin.Context) {
 
 // GetBudgetSummary provides overall budget vs spending summary
 func GetBudgetSummary(c *gin.Context) {
+	// Get user ID from JWT token
+	userID, err := getBudgetUserIDFromToken(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
 	var budgets []models.Budget
-	config.DB.Where("is_active = ?", true).Find(&budgets)
+	config.DB.Where("is_active = ? AND user_id = ?", true, userID).Find(&budgets)
 
 	summary := gin.H{
 		"total_budgets":       len(budgets),
@@ -204,8 +258,8 @@ func GetBudgetSummary(c *gin.Context) {
 
 		var categorySpent float64
 		config.DB.Model(&models.Expense{}).
-			Where("category = ? AND created_at >= ? AND created_at <= ?",
-				budget.Category, budget.StartDate, budget.EndDate).
+			Where("category = ? AND user_id = ? AND created_at >= ? AND created_at <= ?",
+				budget.Category, userID, budget.StartDate, budget.EndDate).
 			Select("COALESCE(SUM(amount), 0)").
 			Row().Scan(&categorySpent)
 
