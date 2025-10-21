@@ -119,9 +119,10 @@ export default function HomeScreen() {
 
             console.log("📡 Fetching expenses from API...");
             const res = await API.get("/expenses"); 
-            console.log("📊 Received", res.data?.length || 0, "expenses from API");
+            console.log("📊 API Response:", res.data);
             
-            const expensesData = res.data || [];
+            const expensesData = res.data.expenses || [];
+            console.log("📊 Received", expensesData.length, "expenses from API");
             setExpenses(expensesData);
             
             // Extract unique categories

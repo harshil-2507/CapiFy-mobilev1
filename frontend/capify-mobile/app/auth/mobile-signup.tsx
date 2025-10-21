@@ -14,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Color scheme (matching main app)
 const Colors = {
@@ -47,6 +48,7 @@ const testAPIConnection = async () => {
 interface FormData {
   fullName: string;
   mobileNumber: string;
+  pin: string;
 }
 
 export default function SignUpScreen() {
@@ -54,12 +56,14 @@ export default function SignUpScreen() {
   const [formData, setFormData] = useState<FormData>({
     fullName: '',
     mobileNumber: '',
+    pin: '',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'details' | 'otp' | 'success'>('details');
   const [otp, setOtp] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [forceUpdate, setForceUpdate] = useState(0);
+  const [showPIN, setShowPIN] = useState(false);
 
   // Test API connection on component mount
   useEffect(() => {
@@ -96,6 +100,10 @@ export default function SignUpScreen() {
     return false;
   };
 
+  const validatePIN = (pin: string): boolean => {
+    return pin.length === 4 && /^\d{4}$/.test(pin);
+  };
+
   const validateForm = (): boolean => {
     if (!formData.fullName.trim()) {
       Alert.alert('Error', 'Please enter your full name');
@@ -109,6 +117,27 @@ export default function SignUpScreen() {
 
     if (!validateMobileNumber(formData.mobileNumber)) {
       Alert.alert('Error', 'Please enter a valid Indian mobile number (10 digits)');
+      return false;
+    }
+
+    if (!formData.pin.trim()) {
+      Alert.alert('Error', 'Please enter your 4-digit PIN');
+      return false;
+    }
+
+    if (!validatePIN(formData.pin)) {
+      Alert.alert('Error', 'PIN must be exactly 4 digits');
+      return false;
+    }
+
+    // Check for weak PINs
+    if (/^(\d)\1{3}$/.test(formData.pin)) {
+      Alert.alert('Weak PIN', 'Please choose a stronger PIN. Avoid using the same digit repeatedly.');
+      return false;
+    }
+
+    if (['1234', '0123', '2345', '3456', '4567', '5678', '6789', '7890'].includes(formData.pin)) {
+      Alert.alert('Weak PIN', 'Please choose a stronger PIN. Avoid sequential numbers.');
       return false;
     }
 
@@ -187,6 +216,7 @@ export default function SignUpScreen() {
           mobile_number: formData.mobileNumber,
           otp_code: otp,
           name: formData.fullName,
+          pin: formData.pin,
         }),
       });
 
@@ -199,7 +229,11 @@ export default function SignUpScreen() {
       });
 
       if (data.success) {
-        // Store tokens (in a real app, use secure storage)
+        // Store tokens in AsyncStorage
+        await AsyncStorage.setItem('userToken', data.access_token);
+        await AsyncStorage.setItem('refreshToken', data.refresh_token);
+        await AsyncStorage.setItem('userData', JSON.stringify(data.user));
+        
         console.log('✅ Registration successful!', {
           user: data.user,
           accessToken: data.access_token?.substring(0, 20) + '...',
@@ -218,7 +252,6 @@ export default function SignUpScreen() {
               text: 'Get Started',
               onPress: () => {
                 console.log('🚀 Navigating to home...');
-                // TODO: Store tokens securely
                 router.replace('/(tabs)');
               },
             },
@@ -273,9 +306,35 @@ export default function SignUpScreen() {
             onChangeText={(text) => handleInputChange('mobileNumber', text.replace(/\D/g, ''))}
             keyboardType="phone-pad"
             maxLength={10}
+            returnKeyType="next"
+          />
+        </View>
+      </View>
+
+      {/* PIN Input */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Create PIN</Text>
+        <View style={styles.inputWrapper}>
+          <Ionicons name="lock-closed-outline" size={20} color={Colors.textSecondary} />
+          <TextInput
+            style={styles.textInput}
+            placeholder="Enter your 4-digit PIN"
+            placeholderTextColor={Colors.textSecondary}
+            value={formData.pin}
+            onChangeText={(text) => handleInputChange('pin', text.replace(/\D/g, ''))}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry={!showPIN}
             returnKeyType="done"
             onSubmitEditing={sendOTP}
           />
+          <TouchableOpacity onPress={() => setShowPIN(!showPIN)}>
+            <Ionicons 
+              name={showPIN ? "eye-outline" : "eye-off-outline"} 
+              size={20} 
+              color={Colors.textSecondary} 
+            />
+          </TouchableOpacity>
         </View>
       </View>
 
