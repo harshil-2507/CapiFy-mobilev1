@@ -63,5 +63,5 @@ func main() {
 	fmt.Println("   GET  /debug/users")
 	fmt.Println("   GET  /debug/otps")
 	fmt.Println("   GET  /debug/user/:mobile")
-	r.Run(":8000")
+	r.Run("0.0.0.0:8000")
 }
