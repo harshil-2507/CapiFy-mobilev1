@@ -61,7 +61,7 @@ func DeleteExpense(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	
+
 	// First, check if expense exists and belongs to user
 	var expense models.Expense
 	result := config.DB.Where("id = ? AND user_id = ?", id, userID).First(&expense)
@@ -84,7 +84,7 @@ func UpdateExpense(c *gin.Context) {
 	}
 
 	id := c.Param("id")
-	
+
 	// First, check if expense exists and belongs to user
 	var expense models.Expense
 	result := config.DB.Where("id = ? AND user_id = ?", id, userID).First(&expense)

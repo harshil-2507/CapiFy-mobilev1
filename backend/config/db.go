@@ -36,11 +36,11 @@ func ConnectDatabase() {
 
 		if columnCount == 0 {
 			fmt.Println("🔧 Adding user_id columns to existing tables...")
-			
+
 			// Add user_id as nullable first
 			database.Exec("ALTER TABLE expenses ADD COLUMN user_id bigint")
 			database.Exec("ALTER TABLE budgets ADD COLUMN user_id bigint")
-			
+
 			// Create default user for existing data with proper PIN hash
 			defaultPINHash, err := utils.HashPIN("9999") // Default PIN for migration user
 			if err != nil {
@@ -65,28 +65,28 @@ func ConnectDatabase() {
 	// Check and add PIN column to existing users table
 	var pinColumnCount int64
 	database.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'pin'").Scan(&pinColumnCount)
-	
+
 	if pinColumnCount == 0 {
 		fmt.Println("🔧 Adding PIN column to users table...")
-		
+
 		// Add PIN column as nullable first
 		if err := database.Exec("ALTER TABLE users ADD COLUMN pin text").Error; err != nil {
 			log.Printf("Error adding PIN column: %v", err)
 		}
-		
+
 		// Generate default PIN hash for existing users
 		defaultPINHash, err := utils.HashPIN("0000") // Default PIN, users will need to reset
 		if err != nil {
 			log.Printf("Error generating default PIN hash: %v", err)
 			defaultPINHash = "default:hash" // Fallback
 		}
-		
+
 		// Update existing users with default PIN
 		database.Exec("UPDATE users SET pin = ? WHERE pin IS NULL", defaultPINHash)
-		
+
 		// Now make PIN column NOT NULL
 		database.Exec("ALTER TABLE users ALTER COLUMN pin SET NOT NULL")
-		
+
 		fmt.Println("✅ PIN column added and populated for existing users")
 	}
 

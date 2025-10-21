@@ -11,11 +11,11 @@ import (
 
 // PIN hashing parameters
 const (
-	saltLength     = 16
-	keyLength      = 32
-	argonTime      = 1
-	argonMemory    = 64 * 1024
-	argonThreads   = 4
+	saltLength   = 16
+	keyLength    = 32
+	argonTime    = 1
+	argonMemory  = 64 * 1024
+	argonThreads = 4
 )
 
 // HashPIN hashes a PIN using Argon2id
@@ -112,7 +112,7 @@ func GenerateRandomPIN() (string, error) {
 
 	// Convert to 4-digit PIN
 	pin := fmt.Sprintf("%04d", int(bytes[0])<<8+int(bytes[1])%10000)
-	
+
 	// Ensure it's not a weak PIN
 	if isWeakPIN(pin) {
 		return GenerateRandomPIN() // Recursive call if weak
