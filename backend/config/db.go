@@ -2,6 +2,7 @@ package config
 
 import (
 	"finance-app-backend/models"
+	"finance-app-backend/utils"
 	"fmt"
 	"log"
 
@@ -40,10 +41,15 @@ func ConnectDatabase() {
 			database.Exec("ALTER TABLE expenses ADD COLUMN user_id bigint")
 			database.Exec("ALTER TABLE budgets ADD COLUMN user_id bigint")
 
-			// Create default user for existing data
+			// Create default user for existing data with proper PIN hash
+			defaultPINHash, err := utils.HashPIN("9999") // Default PIN for migration user
+			if err != nil {
+				defaultPINHash = "migration-placeholder-hash" // Fallback
+			}
 			defaultUser := models.User{
 				MobileNumber: "+919999999999",
 				Name:         "Default User (Migration)",
+				PIN:          defaultPINHash,
 				IsVerified:   true,
 			}
 			database.Create(&defaultUser)
@@ -54,6 +60,34 @@ func ConnectDatabase() {
 
 			fmt.Printf("✅ Updated existing records with default user ID: %d\n", defaultUser.ID)
 		}
+	}
+
+	// Check and add PIN column to existing users table
+	var pinColumnCount int64
+	database.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'pin'").Scan(&pinColumnCount)
+
+	if pinColumnCount == 0 {
+		fmt.Println("🔧 Adding PIN column to users table...")
+
+		// Add PIN column as nullable first
+		if err := database.Exec("ALTER TABLE users ADD COLUMN pin text").Error; err != nil {
+			log.Printf("Error adding PIN column: %v", err)
+		}
+
+		// Generate default PIN hash for existing users
+		defaultPINHash, err := utils.HashPIN("0000") // Default PIN, users will need to reset
+		if err != nil {
+			log.Printf("Error generating default PIN hash: %v", err)
+			defaultPINHash = "default:hash" // Fallback
+		}
+
+		// Update existing users with default PIN
+		database.Exec("UPDATE users SET pin = ? WHERE pin IS NULL", defaultPINHash)
+
+		// Now make PIN column NOT NULL
+		database.Exec("ALTER TABLE users ALTER COLUMN pin SET NOT NULL")
+
+		fmt.Println("✅ PIN column added and populated for existing users")
 	}
 
 	// Auto-migrate all models

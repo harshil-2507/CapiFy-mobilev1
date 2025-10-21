@@ -211,9 +211,37 @@ func (ac *AuthController) VerifyOTP(c *gin.Context) {
 				return
 			}
 
+			if req.PIN == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"success": false,
+					"message": "PIN is required for new user registration",
+				})
+				return
+			}
+
+			// Validate PIN
+			if err := utils.ValidatePIN(req.PIN); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
+
+			// Hash the PIN
+			hashedPIN, err := utils.HashPIN(req.PIN)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"success": false,
+					"message": "Failed to secure PIN",
+				})
+				return
+			}
+
 			user = models.User{
 				MobileNumber: normalizedMobile,
 				Name:         req.Name,
+				PIN:          hashedPIN,
 				IsVerified:   true,
 			}
 
@@ -360,5 +388,276 @@ func (ac *AuthController) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"user":    user,
+	})
+}
+
+// Login authenticates user with mobile number and PIN
+// @Summary Login with PIN
+// @Description Authenticate user using mobile number and PIN
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.LoginRequest true "Login credentials"
+// @Success 200 {object} models.AuthResponse
+// @Failure 400 {object} gin.H
+// @Failure 401 {object} gin.H
+// @Router /auth/login [post]
+func (ac *AuthController) Login(c *gin.Context) {
+	var req models.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request format",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Normalize mobile number
+	normalizedMobile := utils.NormalizeMobileNumber(req.MobileNumber)
+
+	// Validate PIN format
+	if err := utils.ValidatePIN(req.PIN); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Find user by mobile number
+	var user models.User
+	result := config.DB.Where("mobile_number = ? AND is_verified = true", normalizedMobile).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "Invalid mobile number or PIN",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Database error",
+			})
+		}
+		return
+	}
+
+	// Verify PIN
+	isValidPIN, err := utils.VerifyPIN(req.PIN, user.PIN)
+	if err != nil || !isValidPIN {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid mobile number or PIN",
+		})
+		return
+	}
+
+	// Generate JWT tokens
+	accessToken, err := utils.GenerateAccessToken(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to generate access token",
+		})
+		return
+	}
+
+	refreshToken, err := utils.GenerateRefreshToken(&user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to generate refresh token",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":       true,
+		"message":       "Login successful",
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"user":          user,
+	})
+}
+
+// ForgotPIN initiates PIN reset process by sending OTP
+// @Summary Forgot PIN
+// @Description Send OTP for PIN reset
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.ForgotPINRequest true "Mobile number"
+// @Success 200 {object} models.OTPResponse
+// @Failure 400 {object} gin.H
+// @Router /auth/forgot-pin [post]
+func (ac *AuthController) ForgotPIN(c *gin.Context) {
+	var req models.ForgotPINRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request format",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Normalize mobile number
+	normalizedMobile := utils.NormalizeMobileNumber(req.MobileNumber)
+
+	// Check if user exists and is verified
+	var user models.User
+	result := config.DB.Where("mobile_number = ? AND is_verified = true", normalizedMobile).First(&user)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"success": false,
+				"message": "No account found with this mobile number",
+			})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": "Database error",
+			})
+		}
+		return
+	}
+
+	// Check rate limiting (same as SendOTP)
+	var recentOTP models.OTPVerification
+	cutoffTime := time.Now().Add(-1 * time.Minute)
+	result = config.DB.Where("mobile_number = ? AND created_at > ?", normalizedMobile, cutoffTime).
+		Order("created_at DESC").First(&recentOTP)
+
+	if result.Error == nil {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"success": false,
+			"message": "Please wait before requesting another OTP",
+		})
+		return
+	}
+
+	// Generate and send OTP (same logic as SendOTP)
+	otpCode := utils.GenerateOTP()
+	expiresAt := time.Now().Add(5 * time.Minute)
+
+	otpRecord := models.OTPVerification{
+		MobileNumber: normalizedMobile,
+		OTPCode:      otpCode,
+		ExpiresAt:    expiresAt,
+		IsVerified:   false,
+		AttemptCount: 0,
+	}
+
+	if err := config.DB.Create(&otpRecord).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to generate OTP. Please try again.",
+		})
+		return
+	}
+
+	// Send SMS
+	err := ac.smsService.SendOTP(normalizedMobile, otpCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to send OTP",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"message":    "OTP sent successfully for PIN reset",
+		"expires_in": 300, // 5 minutes in seconds
+	})
+}
+
+// ResetPIN resets user PIN after OTP verification
+// @Summary Reset PIN
+// @Description Reset user PIN with OTP verification
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param request body models.ResetPINRequest true "Reset PIN data"
+// @Success 200 {object} gin.H
+// @Failure 400 {object} gin.H
+// @Router /auth/reset-pin [post]
+func (ac *AuthController) ResetPIN(c *gin.Context) {
+	var req models.ResetPINRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request format",
+			"error":   err.Error(),
+		})
+		return
+	}
+
+	// Normalize mobile number
+	normalizedMobile := utils.NormalizeMobileNumber(req.MobileNumber)
+
+	// Validate new PIN
+	if err := utils.ValidatePIN(req.NewPIN); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	// Verify OTP (same logic as VerifyOTP)
+	var otpRecord models.OTPVerification
+	result := config.DB.Where("mobile_number = ? AND otp_code = ? AND is_verified = false AND expires_at > ?",
+		normalizedMobile, req.OTPCode, time.Now()).
+		Order("created_at DESC").First(&otpRecord)
+
+	if result.Error != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid or expired OTP",
+		})
+		return
+	}
+
+	// Mark OTP as verified
+	otpRecord.IsVerified = true
+	config.DB.Save(&otpRecord)
+
+	// Find user and update PIN
+	var user models.User
+	result = config.DB.Where("mobile_number = ? AND is_verified = true", normalizedMobile).First(&user)
+	if result.Error != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "User not found",
+		})
+		return
+	}
+
+	// Hash the new PIN
+	hashedPIN, err := utils.HashPIN(req.NewPIN)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to secure PIN",
+		})
+		return
+	}
+
+	// Update user PIN
+	user.PIN = hashedPIN
+	if err := config.DB.Save(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to update PIN",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "PIN reset successfully",
 	})
 }

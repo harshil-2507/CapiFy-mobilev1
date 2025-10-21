@@ -10,6 +10,7 @@ type User struct {
 	ID           uint           `json:"id" gorm:"primaryKey"`
 	MobileNumber string         `json:"mobile_number" gorm:"uniqueIndex;not null"`
 	Name         string         `json:"name" gorm:"not null"`
+	PIN          string         `json:"-" gorm:"not null"` // Store hashed PIN, exclude from JSON
 	IsVerified   bool           `json:"is_verified" gorm:"default:false"`
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
@@ -35,18 +36,39 @@ type OTPVerification struct {
 type CreateUserRequest struct {
 	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
 	Name         string `json:"name" binding:"required" validate:"required,min=2,max=100"`
+	PIN          string `json:"pin" binding:"required" validate:"required,len=4"` // 4-digit PIN
 }
 
 // SendOTPRequest represents the request payload for sending OTP
 type SendOTPRequest struct {
 	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
+	PIN          string `json:"pin,omitempty" validate:"omitempty,len=4"` // Optional for registration
 }
 
-// VerifyOTPRequest represents the request payload for OTP verification
+// VerifyOTPRequest represents the request payload for OTP verification (Registration)
 type VerifyOTPRequest struct {
 	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
 	OTPCode      string `json:"otp_code" binding:"required" validate:"required,len=6"`
-	Name         string `json:"name,omitempty"` // Optional for registration
+	Name         string `json:"name" binding:"required" validate:"required,min=2,max=100"`
+	PIN          string `json:"pin" binding:"required" validate:"required,len=4"`
+}
+
+// LoginRequest represents the request payload for PIN-based login
+type LoginRequest struct {
+	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
+	PIN          string `json:"pin" binding:"required" validate:"required,len=4"`
+}
+
+// ForgotPINRequest represents the request for PIN reset
+type ForgotPINRequest struct {
+	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
+}
+
+// ResetPINRequest represents the request for setting new PIN after OTP verification
+type ResetPINRequest struct {
+	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
+	OTPCode      string `json:"otp_code" binding:"required" validate:"required,len=6"`
+	NewPIN       string `json:"new_pin" binding:"required" validate:"required,len=4"`
 }
 
 // AuthResponse represents the authentication response
