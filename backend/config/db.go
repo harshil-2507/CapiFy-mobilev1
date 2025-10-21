@@ -21,21 +21,50 @@ func getEnv(key, defaultValue string) string {
 }
 
 func ConnectDatabase() {
-	// Use Railway PostgreSQL variables
-	dbHost := getEnv("PGHOST", "localhost")
-	dbPort := getEnv("PGPORT", "5432")
-	dbUser := getEnv("PGUSER", "postgres")
-	dbPassword := getEnv("PGPASSWORD", "postgres")
-	dbName := getEnv("PGDATABASE", "finance")
-
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		dbHost, dbUser, dbPassword, dbName, dbPort)
-	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+	// Check if we're in a test/mock environment
+	if os.Getenv("DB_MOCK") == "true" {
+		fmt.Println("🔧 Running in mock database mode (DB_MOCK=true)")
+		fmt.Println("⚠️  Database operations will be skipped")
+		return
 	}
 
-	fmt.Println("✅ Connected to PostgreSQL successfully!")
+	var database *gorm.DB
+	var err error
+
+	// Use Railway PostgreSQL variables or DATABASE_URL
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL != "" {
+		// Use DATABASE_URL if available (Railway's preferred method)
+		database, err = gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
+		if err != nil {
+			log.Fatal("Failed to connect to database via DATABASE_URL:", err)
+		}
+		fmt.Println("✅ Connected to PostgreSQL via DATABASE_URL successfully!")
+	} else {
+		// Fallback to individual environment variables
+		dbHost := getEnv("PGHOST", "localhost")
+		dbPort := getEnv("PGPORT", "5432")
+		dbUser := getEnv("PGUSER", "postgres")
+		dbPassword := getEnv("PGPASSWORD", "postgres")
+		dbName := getEnv("PGDATABASE", "finance")
+
+		// Use sslmode=disable for local development, require for production
+		sslMode := getEnv("PGSSLMODE", "disable")
+		if os.Getenv("RAILWAY_ENVIRONMENT") != "" || os.Getenv("DATABASE_URL") != "" {
+			sslMode = "require" // Force SSL for Railway/production
+		}
+		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+			dbHost, dbUser, dbPassword, dbName, dbPort, sslMode)
+		database, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		if err != nil {
+			log.Printf("❌ Failed to connect to database: %v", err)
+			log.Println("💡 To run without database for testing, set DB_MOCK=true")
+			log.Fatal("Database connection failed")
+		}
+
+		fmt.Println("✅ Connected to PostgreSQL successfully!")
+	}
+
 	DB = database
 
 	// Handle migration for existing tables

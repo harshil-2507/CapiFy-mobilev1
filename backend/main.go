@@ -6,12 +6,21 @@ import (
 	"finance-app-backend/routes"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
+	// Set Gin to release mode for production
+	if os.Getenv("GIN_MODE") == "" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	fmt.Println("🔧 Starting CapiFy Backend...")
+	fmt.Printf("Environment: PORT=%s, GIN_MODE=%s\n", os.Getenv("PORT"), gin.Mode())
+
 	config.ConnectDatabase()
 	r := gin.Default()
 
@@ -26,13 +35,61 @@ func main() {
 	// Health check endpoint for Railway - simple and fast response
 	r.GET("/", func(c *gin.Context) {
 		c.Header("Content-Type", "application/json")
-		c.String(200, `{"status":"ok","service":"capify-backend"}`)
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "capify-backend",
+			"time":    fmt.Sprintf("%d", time.Now().Unix()),
+		})
 	})
 
-	// Additional health check endpoint
+	// Additional health check endpoint with database ping
 	r.GET("/health", func(c *gin.Context) {
 		c.Header("Content-Type", "application/json")
-		c.String(200, `{"status":"healthy","database":"connected"}`)
+
+		// Check if we're in mock mode
+		if os.Getenv("DB_MOCK") == "true" {
+			c.JSON(200, gin.H{
+				"status":   "healthy",
+				"database": "mock_mode",
+				"time":     fmt.Sprintf("%d", time.Now().Unix()),
+			})
+			return
+		}
+
+		// Check database connection
+		if config.DB == nil {
+			c.JSON(500, gin.H{
+				"status":   "unhealthy",
+				"database": "not_initialized",
+				"error":    "Database connection not established",
+			})
+			return
+		}
+
+		sqlDB, err := config.DB.DB()
+		if err != nil {
+			c.JSON(500, gin.H{
+				"status":   "unhealthy",
+				"database": "error getting database instance",
+				"error":    err.Error(),
+			})
+			return
+		}
+
+		if err := sqlDB.Ping(); err != nil {
+			c.JSON(500, gin.H{
+				"status":   "unhealthy",
+				"database": "ping failed",
+				"error":    err.Error(),
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"status":   "healthy",
+			"database": "connected",
+			"time":     fmt.Sprintf("%d", time.Now().Unix()),
+		})
 	})
 
 	// Register all routes
