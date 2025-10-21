@@ -7,7 +7,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // You can keep it as 'localhost' if testing on an iOS/Android simulator/emulator.
 
 const API = axios.create({
-    baseURL: "http://10.167.75.155:8080", // Updated to use local IP instead of localhost
+    baseURL: "https://renewed-achievement-production-eb97.up.railway.app", // Railway deployment URL
     headers: {
         "Content-Type": "application/json",
     },
