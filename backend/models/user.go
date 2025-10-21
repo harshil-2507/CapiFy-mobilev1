@@ -15,7 +15,7 @@ type User struct {
 	CreatedAt    time.Time      `json:"created_at"`
 	UpdatedAt    time.Time      `json:"updated_at"`
 	DeletedAt    gorm.DeletedAt `json:"-" gorm:"index"`
-
+	
 	// Relationships
 	Expenses []Expense `json:"expenses,omitempty" gorm:"foreignKey:UserID"`
 	Budgets  []Budget  `json:"budgets,omitempty" gorm:"foreignKey:UserID"`
@@ -32,7 +32,7 @@ type OTPVerification struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
-// CreateUserRequest represents the request payload for user registration
+// CreateUserRequest represents the request payload for user registration  
 type CreateUserRequest struct {
 	MobileNumber string `json:"mobile_number" binding:"required" validate:"required,min=10,max=15"`
 	Name         string `json:"name" binding:"required" validate:"required,min=2,max=100"`
