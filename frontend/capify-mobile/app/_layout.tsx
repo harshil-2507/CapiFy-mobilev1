@@ -1,20 +1,12 @@
+import { Stack } from 'expo-router';
 import React from 'react';
-//  REMOVE: import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import HomeScreen from './(tabs)'; // adjust path if needed
 
-const Stack = createNativeStackNavigator();
-
-export default function App() {
+export default function RootLayout() {
   return (
-    //  REMOVE: <NavigationContainer>
-      <Stack.Navigator initialRouteName="Home">
-        <Stack.Screen
-          name="Home"
-          component={HomeScreen}
-          options={{ headerShown: false }}
-        />
-      </Stack.Navigator>
-    // REMOVE: </NavigationContainer>
+    <Stack>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="home" options={{ headerShown: false }} />
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
   );
 }
