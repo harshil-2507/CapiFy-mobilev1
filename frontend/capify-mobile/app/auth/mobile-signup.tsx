@@ -31,7 +31,7 @@ const Colors = {
   error: '#ef4444',
 };
 
-const API_BASE_URL = 'http://localhost:8080';
+const API_BASE_URL = 'http://10.167.75.155:8080';
 
 // Test API connectivity on component mount
 const testAPIConnection = async () => {
