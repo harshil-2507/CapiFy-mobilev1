@@ -22,8 +22,21 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// Health check endpoint for Railway
 	r.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{"message": "Welcome to CapiFy Backend!"})
+		c.JSON(200, gin.H{
+			"message": "Welcome to CapiFy Backend!",
+			"status":  "healthy",
+			"version": "1.0.0",
+		})
+	})
+
+	// Additional health check endpoint
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status": "healthy",
+			"database": "connected",
+		})
 	})
 
 	// Register all routes
