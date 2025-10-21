@@ -5,6 +5,7 @@ import (
 	"finance-app-backend/utils"
 	"fmt"
 	"log"
+	"os"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -12,8 +13,23 @@ import (
 
 var DB *gorm.DB
 
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
 func ConnectDatabase() {
-	dsn := "host=localhost user=postgres password=postgres dbname=finance port=5432 sslmode=disable"
+	// Use Railway PostgreSQL variables
+	dbHost := getEnv("PGHOST", "localhost")
+	dbPort := getEnv("PGPORT", "5432")
+	dbUser := getEnv("PGUSER", "postgres")
+	dbPassword := getEnv("PGPASSWORD", "postgres")
+	dbName := getEnv("PGDATABASE", "finance")
+
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
+		dbHost, dbUser, dbPassword, dbName, dbPort)
 	database, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
